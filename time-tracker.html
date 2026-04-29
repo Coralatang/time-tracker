@@ -160,6 +160,11 @@ body{font-family:-apple-system,'SF Pro Text',sans-serif;background:var(--bg);col
   <button class="stop-btn" onclick="stopTimer()">停止</button>
 </div>
 
+<div id="sync-bar" style="display:none;margin:0 16px 12px;padding:8px 14px;border-radius:var(--rs);font-size:12px;background:var(--s2);color:var(--t2);display:flex;align-items:center;justify-content:space-between;">
+  <span id="sync-name">—</span>
+  <span id="sync-status" style="color:var(--t3);">—</span>
+</div>
+
 <div class="tabs">
   <button class="tab on" onclick="switchTab('timer',this)">⏱ 計時</button>
   <button class="tab" onclick="switchTab('log',this)">📋 記錄</button>
@@ -240,6 +245,18 @@ body{font-family:-apple-system,'SF Pro Text',sans-serif;background:var(--bg);col
   </div>
 </div>
 
+<!-- NAME MODAL -->
+<div class="overlay" id="overlay-name">
+  <div class="modal">
+    <div class="modal-title">👋 你是誰？</div>
+    <p style="font-size:14px;color:var(--t2);margin-bottom:16px;line-height:1.6;">請輸入你的名字，記錄才能正確儲存到雲端。</p>
+    <div class="field"><label>姓名</label><input type="text" id="name-input" placeholder="例：若馨" autocomplete="off"></div>
+    <div class="modal-btns">
+      <button class="btn-save" onclick="saveName()" style="flex:1;">確認</button>
+    </div>
+  </div>
+</div>
+
 <!-- FAB -->
 <button class="fab" onclick="openQuickStart()">＋</button>
 
@@ -273,6 +290,8 @@ body{font-family:-apple-system,'SF Pro Text',sans-serif;background:var(--bg);col
 </div>
 
 <script>
+const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyx0aw8XKOCDMVFZM5ZhFilAjzU7qvIyfzw6VqWDswDvkHSgxnQ5kJDGBkhJ9ZB-zgg/exec';
+
 const DEFAULT_PROJECTS=['胖胖樹','旅行攝影','圍棋課','雙口呂','陳璿丞','日文課','Coco 水彩','NLP','賽斯課','蔬食課','滑雪課','IFS','冰淇淋 S2','古典音樂','董氏奇穴','白映多元','故宮康健','極光便當','杉野英實','某某甜點','李欣恬','阿銘師','鍾銓斌','營養學','其他'];
 const DEFAULT_WORK_ITEMS=['問卷','宣傳片','頁面','上線資料（SEO+行銷大表）','行銷素材（包含小廣告）','KOL 合作','正課製作','專案管理','教育訓練／內部活動','其他'];
 const DEFAULT_TYPES=['例行會議','決策會議','溝通協調','校閱與回饋','創意發想：文案與設計','編排規劃：流程與研究','一般文案','常態字卡製作','常態設計需求','資料整理','行政庶務','拍攝（B級）','拍攝（C級）','場勘','試講','其他（A級）','其他（B級）','其他（C級）'];
@@ -355,7 +374,7 @@ function stopTimer(){
   const entry={id:Date.now(),taskId:r.taskId,proj:r.proj,item:r.item,type:r.type,desc:r.desc,hours};
   const today=dateKey();if(!state.entries[today])state.entries[today]=[];state.entries[today].push(entry);
   state.running=null;save();clearInterval(timerInterval);timerInterval=null;
-  document.getElementById('active-banner').classList.remove('show');renderTaskList();renderHeader();
+  document.getElementById('active-banner').classList.remove('show');renderTaskList();renderHeader();syncToCloud();
 }
 
 function togglePause(){
@@ -405,7 +424,7 @@ function saveManual(){
   if(!proj||!hours){alert('請填入專案和時數');return;}
   const today=dateKey();if(!state.entries[today])state.entries[today]=[];
   state.entries[today].push({id:Date.now(),taskId:null,proj,item,type,desc,hours});
-  save();closeModal('overlay-manual');renderEntries();renderHeader();
+  save();closeModal('overlay-manual');renderEntries();renderHeader();syncToCloud();
 }
 
 function renderEntries(){
@@ -495,7 +514,68 @@ function openModal(id){document.getElementById(id).classList.add('show');}
 function closeModal(id){document.getElementById(id).classList.remove('show');}
 document.querySelectorAll('.overlay').forEach(o=>{o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('show');});});
 
-renderHeader();updateBanner();renderTaskList();
+// Name check on load
+function checkName(){
+  const name=localStorage.getItem('wt_name')||'';
+  if(!name){
+    openModal('overlay-name');
+  } else {
+    showSyncBar(name);
+    syncFromCloud(name);
+  }
+}
+function saveName(){
+  const v=document.getElementById('name-input').value.trim();
+  if(!v){alert('請輸入名字');return;}
+  localStorage.setItem('wt_name',v);
+  closeModal('overlay-name');
+  showSyncBar(v);
+  syncFromCloud(v);
+}
+function getName(){return localStorage.getItem('wt_name')||'';}
+function showSyncBar(name){
+  const bar=document.getElementById('sync-bar');
+  bar.style.display='flex';
+  document.getElementById('sync-name').textContent='👤 '+name;
+  setSyncStatus('就緒');
+}
+function setSyncStatus(msg){document.getElementById('sync-status').textContent=msg;}
+
+async function syncToCloud(){
+  const name=getName();if(!name)return;
+  const entries=todayEntries();if(!entries.length)return;
+  setSyncStatus('同步中…');
+  const d=new Date();const dateStr=`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
+  const payload={entries:entries.map(e=>({date:dateStr,name,proj:e.proj||'',item:e.item||'',type:e.type||'',desc:e.desc||'',hours:Math.round(e.hours*100)/100}))};
+  try{
+    await fetch(SCRIPT_URL,{method:'POST',body:JSON.stringify(payload)});
+    setSyncStatus('✓ 已同步 '+new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'}));
+  }catch(e){setSyncStatus('⚠ 同步失敗');}
+}
+
+async function syncFromCloud(name){
+  setSyncStatus('載入中…');
+  const d=new Date();const dateStr=`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
+  try{
+    const res=await fetch(`${SCRIPT_URL}?name=${encodeURIComponent(name)}&date=${encodeURIComponent(dateStr)}`);
+    const data=await res.json();
+    if(data.length>0){
+      const today=dateKey();
+      const cloudIds=new Set(data.map(e=>e.desc+'|'+e.hours));
+      const local=state.entries[today]||[];
+      data.forEach(e=>{
+        const key=e.desc+'|'+e.hours;
+        const exists=local.some(l=>(l.desc||'')+'|'+Math.round(l.hours*100)/100==key);
+        if(!exists){local.push({id:Date.now()+Math.random(),taskId:null,proj:e.proj,item:e.item,type:e.type,desc:e.desc,hours:parseFloat(e.hours)||0});}
+      });
+      state.entries[today]=local;save();
+    }
+    setSyncStatus('✓ 已載入');
+    renderHeader();renderTaskList();
+  }catch(e){setSyncStatus('⚠ 無法連線');}
+}
+
+renderHeader();updateBanner();renderTaskList();checkName();
 </script>
 </body>
 </html>
