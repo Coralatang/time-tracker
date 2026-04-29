@@ -466,6 +466,23 @@ function deleteQuickTask(id){
   save();renderTaskList();
 }
 
+function openAddTask(){
+  fillSelect('at-proj',state.projects,'');
+  fillSelect('at-item',state.workItems,'');
+  fillSelectBlank('at-type',state.types);
+  document.getElementById('at-label').value='';
+  openModal('overlay-addtask');
+}
+
+function saveQuickTask(){
+  const proj=document.getElementById('at-proj').value;
+  const item=document.getElementById('at-item').value;
+  const type=document.getElementById('at-type').value;
+  const label=document.getElementById('at-label').value.trim()||(proj+'｜'+item);
+  state.quickTasks.push({id:'q'+Date.now(),label,proj,item,defaultType:type||''});
+  save();closeModal('overlay-addtask');renderTaskList();
+}
+
 function fillSelect(id,opts,val){document.getElementById(id).innerHTML=opts.map(o=>`<option value="${o}"${o===val?' selected':''}>${o}</option>`).join('');}
 function fillSelectBlank(id,opts){document.getElementById(id).innerHTML=`<option value="">—</option>`+opts.map(o=>`<option value="${o}">${o}</option>`).join('');}
 function openModal(id){document.getElementById(id).classList.add('show');}
