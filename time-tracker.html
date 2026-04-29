@@ -490,28 +490,45 @@ function renderSummary(){
 }
 
 function exportCSV(){
-  const entries=todayEntries();if(!entries.length){alert('今日尚無記錄');return;}
-  const d=new Date();const dateStr=dateKey();
+  const entries=todayEntries();
+  if(!entries.length){alert('今日尚無記錄');return;}
+  const dateStr=dateKey();
   const rows=[['日期','專案','工作項目','任務類型','工作內容','時數']];
-  entries.forEach(e=>{rows.push([dateStr,e.proj||'',e.item||'',e.type||'',e.desc||'',Math.round(e.hours*100)/100]);});
-  const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('
-');
-  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8;'});
+  entries.forEach(e=>{
+    rows.push([dateStr,e.proj||'',e.item||'',e.type||'',e.desc||'',Math.round(e.hours*100)/100]);
+  });
+  const lines=rows.map(r=>r.map(v=>{
+    const s=String(v).replace(/"/g,'""');
+    return '"'+s+'"';
+  }).join(','));
+  const csv=lines.join('\n');
+  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');a.href=url;a.download=`工作日誌_${dateStr.replace(/\//g,'')}.csv`;a.click();
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='worklog_'+dateStr.replace(/[/]/g,'')+'.csv';
+  a.click();
   URL.revokeObjectURL(url);
 }
 
 function copyReport(){
-  const entries=todayEntries();if(!entries.length){alert('今日尚無記錄');return;}
+  const entries=todayEntries();
+  if(!entries.length){alert('今日尚無記錄');return;}
   const d=new Date();
-  const lines=[`📅 ${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} 工作日誌`,``];
-  entries.forEach(e=>{const parts=[e.proj,e.item,e.type,e.desc].filter(Boolean);lines.push(`${fmt(e.hours)}｜${parts.join(' › ')}`);});
-  const total=entries.reduce((s,e)=>s+e.hours,0);lines.push(``);lines.push(`⏱ 總計：${fmt(total)}`);
-  navigator.clipboard.writeText(lines.join('
-')).then(()=>{
-    const btn=document.getElementById('copy-btn');btn.textContent='✓ 已複製！';btn.classList.add('success');
-    setTimeout(()=>{btn.textContent='複製日誌文字';btn.classList.remove('success');},2000);
+  const header='📅 '+d.getFullYear()+'/'+(d.getMonth()+1)+'/'+d.getDate()+' 工作日誌';
+  const lines=[header,''];
+  entries.forEach(e=>{
+    const parts=[e.proj,e.item,e.type,e.desc].filter(Boolean);
+    lines.push(fmt(e.hours)+'｜'+parts.join(' › '));
+  });
+  const total=entries.reduce(function(s,e){return s+e.hours;},0);
+  lines.push('');
+  lines.push('⏱ 總計：'+fmt(total));
+  const text=lines.join('\n');
+  navigator.clipboard.writeText(text).then(function(){
+    const btn=document.getElementById('copy-btn');
+    btn.textContent='✓ 已複製！';btn.classList.add('success');
+    setTimeout(function(){btn.textContent='複製日誌文字';btn.classList.remove('success');},2000);
   });
 }
 
