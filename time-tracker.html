@@ -160,7 +160,7 @@ body{font-family:-apple-system,'SF Pro Text',sans-serif;background:var(--bg);col
   <button class="stop-btn" onclick="stopTimer()">停止</button>
 </div>
 
-<div id="sync-bar" style="display:none;margin:0 16px 12px;padding:8px 14px;border-radius:var(--rs);font-size:12px;background:var(--s2);color:var(--t2);display:flex;align-items:center;justify-content:space-between;">
+<div id="sync-bar" style="display:none;margin:0 16px 12px;padding:8px 14px;border-radius:var(--rs);font-size:12px;background:var(--s2);color:var(--t2);align-items:center;justify-content:space-between;">
   <span id="sync-name">—</span>
   <span id="sync-status" style="color:var(--t3);">—</span>
 </div>
@@ -536,6 +536,8 @@ function getName(){return localStorage.getItem('wt_name')||'';}
 function showSyncBar(name){
   const bar=document.getElementById('sync-bar');
   bar.style.display='flex';
+  bar.style.alignItems='center';
+  bar.style.justifyContent='space-between';
   document.getElementById('sync-name').textContent='👤 '+name;
   setSyncStatus('就緒');
 }
