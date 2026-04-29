@@ -283,6 +283,7 @@ body{font-family:-apple-system,'SF Pro Text',sans-serif;background:var(--bg);col
     <div class="modal-title">新增快速項目</div>
     <div class="field"><label>專案</label><select id="at-proj"></select></div>
     <div class="field"><label>工作項目</label><select id="at-item"></select></div>
+    <div class="field"><label>任務類型（預設）</label><select id="at-type"></select></div>
     <div class="field"><label>卡片顯示名稱（選填）</label><input type="text" id="at-label" placeholder="留空自動組合"></div>
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeModal('overlay-addtask')">取消</button>
@@ -498,7 +499,7 @@ function delItem(t){state.workItems=state.workItems.filter(x=>x!==t);save();rend
 function addType(){const v=document.getElementById('new-type-input').value.trim();if(!v||state.types.includes(v))return;state.types.push(v);save();document.getElementById('new-type-input').value='';renderSettings();}
 function delType(t){state.types=state.types.filter(x=>x!==t);save();renderSettings();}
 
-function openAddTask(){fillSelect('at-proj',state.projects,'');fillSelect('at-item',state.workItems,'');document.getElementById('at-label').value='';openModal('overlay-addtask');}
+function openAddTask(){fillSelect('at-proj',state.projects,'');fillSelect('at-item',state.workItems,'');fillSelectBlank('at-type',state.types);document.getElementById('at-label').value='';openModal('overlay-addtask');}
 function openQuickStart(){
   if(state.running){alert('已有計時進行中，請先停止後再開始。');return;}
   fillSelectBlank('q-proj',state.projects);fillSelectBlank('q-item',state.workItems);fillSelectBlank('q-type',state.types);
@@ -511,7 +512,7 @@ function startQuick(){
   state.running={taskId:null,proj:proj||null,item:item||null,type:type||null,desc,startMs:Date.now(),accMs:0,paused:false,pausedAt:null};
   save();closeModal('overlay-quick');updateBanner();renderTaskList();
 }
-function saveQuickTask(){const proj=document.getElementById('at-proj').value,item=document.getElementById('at-item').value,label=document.getElementById('at-label').value.trim()||(proj+'｜'+item);state.quickTasks.push({id:'q'+Date.now(),label,proj,item});save();closeModal('overlay-addtask');renderTaskList();}
+function saveQuickTask(){const proj=document.getElementById('at-proj').value,item=document.getElementById('at-item').value,type=document.getElementById('at-type').value,label=document.getElementById('at-label').value.trim()||(proj+'｜'+item);state.quickTasks.push({id:'q'+Date.now(),label,proj,item,defaultType:type||''});save();closeModal('overlay-addtask');renderTaskList();}
 
 function fillSelect(id,opts,val){document.getElementById(id).innerHTML=opts.map(o=>`<option value="${o}"${o===val?' selected':''}>${o}</option>`).join('');}
 function fillSelectBlank(id,opts){document.getElementById(id).innerHTML=`<option value="">—</option>`+opts.map(o=>`<option value="${o}">${o}</option>`).join('');}
