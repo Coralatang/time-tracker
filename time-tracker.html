@@ -466,6 +466,75 @@ function deleteQuickTask(id){
   save();renderTaskList();
 }
 
+function renderEntries(){
+  const list=document.getElementById('entry-list');const entries=todayEntries();list.innerHTML='';
+  if(!entries.length){list.innerHTML='<div class="empty">今天還沒有記錄<br>開始計時或手動補記吧！</div>';return;}
+  entries.slice().reverse().forEach(e=>{
+    const div=document.createElement('div');div.className='entry-row';
+    div.innerHTML=`<div class="entry-dot"></div><div class="entry-info"><div class="entry-proj">${e.proj||''}${e.item?' · '+e.item:''}</div><div class="entry-detail">${[e.type,e.desc].filter(Boolean).join('｜')}</div></div><div class="entry-time">${fmt(e.hours)}</div><button class="entry-del" onclick="deleteEntry(${e.id})">×</button>`;
+    list.appendChild(div);
+  });
+}
+
+function deleteEntry(id){
+  const today=dateKey();state.entries[today]=(state.entries[today]||[]).filter(e=>e.id!==id);
+  save();renderEntries();renderHeader();
+}
+
+function renderSummary(){
+  const entries=todayEntries();const box=document.getElementById('summary-box');
+  if(!entries.length){box.innerHTML='<div class="empty" style="padding:24px 0;">今日尚無記錄</div>';return;}
+  const byProj={};entries.forEach(e=>{byProj[e.proj]=(byProj[e.proj]||0)+e.hours;});
+  const sorted=Object.entries(byProj).sort((a,b)=>b[1]-a[1]);const total=entries.reduce((s,e)=>s+e.hours,0);
+  box.innerHTML=sorted.map(([p,h])=>`<div class="summary-row"><span class="summary-proj">${projEmoji(p)} ${p}</span><span class="summary-time">${fmt(h)}</span></div>`).join('')+`<div class="summary-total"><span class="summary-total-label">共 ${entries.length} 筆</span><span class="summary-total-val">${fmt(total)}</span></div>`;
+}
+
+function exportCSV(){
+  const entries=todayEntries();if(!entries.length){alert('今日尚無記錄');return;}
+  const d=new Date();const dateStr=dateKey();
+  const rows=[['日期','專案','工作項目','任務類型','工作內容','時數']];
+  entries.forEach(e=>{rows.push([dateStr,e.proj||'',e.item||'',e.type||'',e.desc||'',Math.round(e.hours*100)/100]);});
+  const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('
+');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=`工作日誌_${dateStr.replace(/\//g,'')}.csv`;a.click();
+  URL.revokeObjectURL(url);
+}
+
+function copyReport(){
+  const entries=todayEntries();if(!entries.length){alert('今日尚無記錄');return;}
+  const d=new Date();
+  const lines=[`📅 ${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} 工作日誌`,``];
+  entries.forEach(e=>{const parts=[e.proj,e.item,e.type,e.desc].filter(Boolean);lines.push(`${fmt(e.hours)}｜${parts.join(' › ')}`);});
+  const total=entries.reduce((s,e)=>s+e.hours,0);lines.push(``);lines.push(`⏱ 總計：${fmt(total)}`);
+  navigator.clipboard.writeText(lines.join('
+')).then(()=>{
+    const btn=document.getElementById('copy-btn');btn.textContent='✓ 已複製！';btn.classList.add('success');
+    setTimeout(()=>{btn.textContent='複製日誌文字';btn.classList.remove('success');},2000);
+  });
+}
+
+function clearDay(){
+  if(!confirm('確定清除今日所有記錄？'))return;
+  state.entries[dateKey()]=[];
+  state.timers={};clearInterval(tickInterval);
+  save();renderSummary();renderHeader();renderTaskList();
+}
+
+function renderSettings(){
+  document.getElementById('proj-list').innerHTML=state.projects.map(p=>`<div class="settings-item"><span class="settings-item-name">${projEmoji(p)} ${p}</span><button class="del-tag-btn" onclick="delProj('${p.replace(/'/g,"\'")}')">×</button></div>`).join('');
+  document.getElementById('item-list').innerHTML=state.workItems.map(t=>`<div class="settings-item"><span class="settings-item-name">${t}</span><button class="del-tag-btn" onclick="delItem('${t.replace(/'/g,"\'")}')">×</button></div>`).join('');
+  document.getElementById('type-list').innerHTML=state.types.map(t=>`<div class="settings-item"><span class="settings-item-name">${t}</span><button class="del-tag-btn" onclick="delType('${t.replace(/'/g,"\'")}')">×</button></div>`).join('');
+}
+
+function addProject(){const v=document.getElementById('new-proj-input').value.trim();if(!v||state.projects.includes(v))return;state.projects.push(v);save();document.getElementById('new-proj-input').value='';renderSettings();}
+function delProj(p){state.projects=state.projects.filter(x=>x!==p);save();renderSettings();}
+function addWorkItem(){const v=document.getElementById('new-item-input').value.trim();if(!v||state.workItems.includes(v))return;state.workItems.push(v);save();document.getElementById('new-item-input').value='';renderSettings();}
+function delItem(t){state.workItems=state.workItems.filter(x=>x!==t);save();renderSettings();}
+function addType(){const v=document.getElementById('new-type-input').value.trim();if(!v||state.types.includes(v))return;state.types.push(v);save();document.getElementById('new-type-input').value='';renderSettings();}
+function delType(t){state.types=state.types.filter(x=>x!==t);save();renderSettings();}
+
 function openAddTask(){
   fillSelect('at-proj',state.projects,'');
   fillSelect('at-item',state.workItems,'');
