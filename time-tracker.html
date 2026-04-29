@@ -374,7 +374,7 @@ function stopTimer(){
   const entry={id:Date.now(),taskId:r.taskId,proj:r.proj,item:r.item,type:r.type,desc:r.desc,hours};
   const today=dateKey();if(!state.entries[today])state.entries[today]=[];state.entries[today].push(entry);
   state.running=null;save();clearInterval(timerInterval);timerInterval=null;
-  document.getElementById('active-banner').classList.remove('show');renderTaskList();renderHeader();syncToCloud();
+  document.getElementById('active-banner').classList.remove('show');renderTaskList();renderHeader();syncToCloud(entry);
 }
 
 function togglePause(){
@@ -423,8 +423,9 @@ function saveManual(){
   const proj=document.getElementById('m-proj').value,item=document.getElementById('m-item').value,type=document.getElementById('m-type').value,desc=document.getElementById('m-desc').value.trim(),hours=parseFloat(document.getElementById('m-hours').value)||0;
   if(!proj||!hours){alert('請填入專案和時數');return;}
   const today=dateKey();if(!state.entries[today])state.entries[today]=[];
-  state.entries[today].push({id:Date.now(),taskId:null,proj,item,type,desc,hours});
-  save();closeModal('overlay-manual');renderEntries();renderHeader();syncToCloud();
+  const newEntry={id:Date.now(),taskId:null,proj,item,type,desc,hours};
+  state.entries[today].push(newEntry);
+  save();closeModal('overlay-manual');renderEntries();renderHeader();syncToCloud(newEntry);
 }
 
 function renderEntries(){
@@ -543,12 +544,12 @@ function showSyncBar(name){
 }
 function setSyncStatus(msg){document.getElementById('sync-status').textContent=msg;}
 
-async function syncToCloud(){
+async function syncToCloud(entry){
   const name=getName();if(!name)return;
-  const entries=todayEntries();if(!entries.length)return;
+  if(!entry)return;
   setSyncStatus('同步中…');
-  const d=new Date();const dateStr=`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
-  const payload={entries:entries.map(e=>({date:dateStr,name,proj:e.proj||'',item:e.item||'',type:e.type||'',desc:e.desc||'',hours:Math.round(e.hours*100)/100}))};
+  const d=new Date();const dateStr=dateKey();
+  const payload={entries:[{date:dateStr,name,proj:entry.proj||'',item:entry.item||'',type:entry.type||'',desc:entry.desc||'',hours:Math.round(entry.hours*100)/100}]};
   try{
     await fetch(SCRIPT_URL,{method:'POST',body:JSON.stringify(payload)});
     setSyncStatus('✓ 已同步 '+new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'}));
@@ -557,20 +558,19 @@ async function syncToCloud(){
 
 async function syncFromCloud(name){
   setSyncStatus('載入中…');
-  const d=new Date();const dateStr=`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
+  const dateStr=dateKey();
   try{
     const res=await fetch(`${SCRIPT_URL}?name=${encodeURIComponent(name)}&date=${encodeURIComponent(dateStr)}`);
     const data=await res.json();
-    if(data.length>0){
+    if(Array.isArray(data)&&data.length>0){
       const today=dateKey();
-      const cloudIds=new Set(data.map(e=>e.desc+'|'+e.hours));
-      const local=state.entries[today]||[];
-      data.forEach(e=>{
-        const key=e.desc+'|'+e.hours;
-        const exists=local.some(l=>(l.desc||'')+'|'+Math.round(l.hours*100)/100==key);
-        if(!exists){local.push({id:Date.now()+Math.random(),taskId:null,proj:e.proj,item:e.item,type:e.type,desc:e.desc,hours:parseFloat(e.hours)||0});}
-      });
-      state.entries[today]=local;save();
+      // Replace local entries with cloud entries entirely
+      state.entries[today]=data.map((e,i)=>({
+        id:Date.now()+i,taskId:null,
+        proj:e.proj||'',item:e.item||'',type:e.type||'',
+        desc:e.desc||'',hours:parseFloat(e.hours)||0
+      }));
+      save();
     }
     setSyncStatus('✓ 已載入');
     renderHeader();renderTaskList();
