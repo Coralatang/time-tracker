@@ -38,19 +38,21 @@ body{font-family:-apple-system,'SF Pro Text',sans-serif;background:var(--bg);col
 .hdr-total-label{font-size:11px;color:var(--t3);margin-bottom:2px;}
 .hdr-total-val{font-size:20px;font-weight:700;color:var(--acc);}
 
-#active-banner{display:none;margin:0 16px 16px;padding:12px 14px;background:var(--acc-l);border:1.5px solid var(--acc-l2);border-radius:var(--r);align-items:center;gap:10px;}
-#active-banner.show{display:flex;}
+#active-timers{margin:0 16px;display:flex;flex-direction:column;gap:6px;margin-bottom:0;}
+#active-timers:not(:empty){margin-bottom:16px;}
+.timer-row{padding:10px 14px;border-radius:var(--r);border:1.5px solid var(--acc-l2);background:var(--acc-l);display:flex;align-items:center;gap:8px;}
+.timer-row.paused{background:var(--s2);border-color:var(--b2);}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--acc);animation:pulse 1.4s ease-in-out infinite;flex-shrink:0;}
+.timer-row.paused .dot{animation:none;background:var(--t3);}
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.35;transform:scale(.7);}}
-.banner-info{flex:1;min-width:0;}
-.banner-name{font-size:13px;font-weight:600;color:var(--acc-dk);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.banner-time{font-size:12px;color:var(--t2);margin-top:1px;}
-.stop-btn{padding:7px 14px;background:var(--acc);color:#fff;border:none;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;}
-.pause-btn{padding:7px 14px;background:var(--s1);color:var(--acc-dk);border:1.5px solid var(--acc-l2);border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;margin-right:4px;}
-.banner-paused .dot{animation:none;opacity:.4;}
-.banner-paused .banner-name{color:var(--t2);}
-.banner-paused .banner-time{color:var(--t3);}
-#active-banner.paused{background:var(--s2);border-color:var(--b2);}
+.timer-info{flex:1;min-width:0;}
+.timer-name{font-size:13px;font-weight:600;color:var(--acc-dk);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.timer-row.paused .timer-name{color:var(--t2);}
+.timer-elapsed{font-size:12px;color:var(--t2);margin-top:1px;font-variant-numeric:tabular-nums;}
+.timer-row.paused .timer-elapsed{color:var(--t3);}
+.pause-btn{padding:5px 11px;background:var(--s1);color:var(--acc-dk);border:1.5px solid var(--acc-l2);border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;}
+.timer-row.paused .pause-btn{color:var(--acc);border-color:var(--acc-l2);}
+.stop-btn{padding:5px 11px;background:var(--acc);color:#fff;border:none;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;}
 
 .tabs{display:flex;gap:5px;padding:0 16px;margin-bottom:20px;}
 .tab{flex:1;padding:9px;text-align:center;font-size:12px;font-weight:500;border-radius:var(--rs);border:1px solid var(--b1);background:var(--s1);color:var(--t2);cursor:pointer;transition:all .15s;}
@@ -152,15 +154,7 @@ body{font-family:-apple-system,'SF Pro Text',sans-serif;background:var(--bg);col
   </div>
 </div>
 
-<div id="active-banner">
-  <div class="dot"></div>
-  <div class="banner-info">
-    <div class="banner-name" id="banner-name">—</div>
-    <div class="banner-time" id="banner-time">00:00:00</div>
-  </div>
-  <button class="pause-btn" id="pause-btn" onclick="togglePause()">暫停</button>
-  <button class="stop-btn" onclick="stopTimer()">停止</button>
-</div>
+<div id="active-timers"></div>
 
 <div id="sync-bar" style="display:none;margin:0 16px 12px;padding:8px 14px;border-radius:var(--rs);font-size:12px;background:var(--s2);color:var(--t2);align-items:center;justify-content:space-between;">
   <span id="sync-name">—</span>
@@ -312,11 +306,13 @@ function load(){
     if(!s.types)s.types=[...DEFAULT_TYPES];
     if(!s.quickTasks)s.quickTasks=[...DEFAULT_QUICK];
     if(!s.entries)s.entries={};
-    if(!s.running)s.running=null;
+    if(!s.timers)s.timers={};
+    // migrate old single running timer
+    if(s.running){s.timers['_legacy']=s.running;delete s.running;}
     const today=dateKey();
     if(!s.entries[today])s.entries[today]=[];
     return s;
-  }catch(e){return{projects:[...DEFAULT_PROJECTS],workItems:[...DEFAULT_WORK_ITEMS],types:[...DEFAULT_TYPES],quickTasks:[...DEFAULT_QUICK],entries:{},running:null};}
+  }catch(e){return{projects:[...DEFAULT_PROJECTS],workItems:[...DEFAULT_WORK_ITEMS],types:[...DEFAULT_TYPES],quickTasks:[...DEFAULT_QUICK],entries:{},timers:{}};}
 }
 function save(){localStorage.setItem('wt2025',JSON.stringify(state));}
 function dateKey(){return new Date().toISOString().slice(0,10);}
@@ -338,200 +334,137 @@ function switchTab(id,btn){
 
 function projEmoji(proj){const map={'胖胖樹':'🌳','旅行攝影':'📷','圍棋課':'⚫','雙口呂':'🎤','陳璿丞':'🏥','日文課':'🇯🇵','Coco 水彩':'🎨','NLP':'🧠','賽斯課':'✨','蔬食課':'🥦','滑雪課':'⛷️','IFS':'💚','冰淇淋 S2':'🍦','其他':'📌'};return map[proj]||'📁';}
 
+// ── TIMERS (multi) ──
+let tickInterval=null;
+
+function getTimerKey(task){return task?task.id:'_quick_'+Date.now();}
+
 function renderTaskList(){
-  const list=document.getElementById('task-list');const running=state.running;list.innerHTML='';
+  const list=document.getElementById('task-list');list.innerHTML='';
   state.quickTasks.forEach(task=>{
-    const isRunning=running&&running.taskId===task.id;
+    const t=state.timers[task.id];
+    const isRunning=t&&!t.paused;
+    const isPaused=t&&t.paused;
     const entries=todayEntries().filter(e=>e.taskId===task.id);
-    const spent=entries.reduce((s,e)=>s+(e.hours||0),0);
-    const div=document.createElement('div');div.className='task-card'+(isRunning?' running':'');
-    div.innerHTML=`<div class="task-emoji">${projEmoji(task.proj)}</div><div class="task-info"><div class="task-name">${task.label}</div><div class="task-sub">${task.item}</div></div><div class="task-right"><div class="task-time">${spent>0?fmt(spent):'—'}</div><div class="task-count">${entries.length>0?entries.length+'筆':''}</div></div><button class="card-del-btn" onclick="event.stopPropagation();deleteQuickTask('${task.id}')">－</button>`;
-    div.onclick=()=>isRunning?null:openTimerModal(task);list.appendChild(div);
+    const saved=entries.reduce((s,e)=>s+(e.hours||0),0);
+    const div=document.createElement('div');
+    div.className='task-card'+(isRunning?' running':isPaused?' paused':'');
+    div.innerHTML=`<div class="task-emoji">${projEmoji(task.proj)}</div><div class="task-info"><div class="task-name">${task.label}</div><div class="task-sub">${task.item}</div></div><div class="task-right"><div class="task-time" id="card-time-${task.id}">${saved>0?fmt(saved):'—'}</div><div class="task-count">${entries.length>0?entries.length+'筆':''}</div></div><button class="card-del-btn" onclick="event.stopPropagation();deleteQuickTask('${task.id}')">－</button>`;
+    div.onclick=()=>openTimerModal(task);
+    list.appendChild(div);
+  });
+  renderTimerBanners();
+  startTick();
+}
+
+function renderTimerBanners(){
+  const container=document.getElementById('active-timers');
+  container.innerHTML='';
+  Object.entries(state.timers).forEach(([key,t])=>{
+    const row=document.createElement('div');
+    row.className='timer-row'+(t.paused?' paused':'');
+    row.id='timer-row-'+key;
+    const label=t.desc||t.item||t.proj||'計時中';
+    row.innerHTML=`<div class="dot"></div><div class="timer-info"><div class="timer-name">${label}</div><div class="timer-elapsed" id="elapsed-${key}">—</div></div><button class="pause-btn" onclick="togglePauseTimer('${key}')">${t.paused?'繼續':'暫停'}</button><button class="stop-btn" onclick="stopTimerKey('${key}')">停止</button>`;
+    container.appendChild(row);
   });
 }
-function deleteQuickTask(id){
-  if(!confirm('確定刪除這個快速項目？'))return;
-  state.quickTasks=state.quickTasks.filter(t=>t.id!==id);
-  save();renderTaskList();
+
+function startTick(){
+  clearInterval(tickInterval);
+  if(!Object.keys(state.timers).length)return;
+  function tick(){
+    Object.entries(state.timers).forEach(([key,t])=>{
+      const el=document.getElementById('elapsed-'+key);
+      if(!el)return;
+      const ms=t.paused?(t.accMs||0):(t.accMs||0)+(Date.now()-t.startMs);
+      const s=Math.floor(ms/1000);
+      const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60;
+      el.textContent=(t.paused?'⏸ ':'')+`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
+      // update card time (saved + current)
+      const savedEl=document.getElementById('card-time-'+key);
+      if(savedEl){
+        const entries=todayEntries().filter(e=>e.taskId===key);
+        const saved=entries.reduce((s,e)=>s+(e.hours||0),0);
+        const cur=ms/3600000;
+        savedEl.textContent=fmt(saved+cur);
+      }
+    });
+  }
+  tick();tickInterval=setInterval(tick,1000);
 }
 
-let pendingTask=null;
-function openTimerModal(task){
-  pendingTask=task;
-  document.getElementById('timer-modal-title').textContent=`計時：${task.label}`;
-  fillSelect('t-proj',state.projects,task.proj);fillSelect('t-item',state.workItems,task.item);fillSelect('t-type',state.types,task.defaultType||'');document.getElementById('t-desc').value='';
-  openModal('overlay-timer');
+function togglePauseTimer(key){
+  const t=state.timers[key];if(!t)return;
+  if(t.paused){
+    t.startMs=Date.now();t.paused=false;
+  } else {
+    t.accMs=(t.accMs||0)+(Date.now()-t.startMs);t.paused=true;
+  }
+  save();renderTimerBanners();startTick();renderTaskList();
 }
 
-function startTimer(){
-  if(state.running&&!state.running.paused)return;
-  if(state.running&&state.running.paused){savePausedAsEntry();}
-  const proj=document.getElementById('t-proj').value,item=document.getElementById('t-item').value,type=document.getElementById('t-type').value,desc=document.getElementById('t-desc').value.trim();
-  state.running={taskId:pendingTask?pendingTask.id:null,proj,item,type,desc,startMs:Date.now(),accMs:0,paused:false,pausedAt:null};
-  save();closeModal('overlay-timer');updateBanner();renderTaskList();
-}
-
-function stopTimer(){
-  if(!state.running)return;
-  const r=state.running;
-  const elapsed=r.paused?r.accMs:(r.accMs+(Date.now()-r.startMs));
-  const hours=elapsed/3600000;
-  if(hours<0.001){state.running=null;save();clearInterval(timerInterval);timerInterval=null;document.getElementById('active-banner').classList.remove('show');renderTaskList();return;}
-  const entry={id:Date.now(),taskId:r.taskId,proj:r.proj,item:r.item,type:r.type,desc:r.desc,hours};
-  const today=dateKey();if(!state.entries[today])state.entries[today]=[];state.entries[today].push(entry);
-  state.running=null;save();clearInterval(timerInterval);timerInterval=null;
-  document.getElementById('active-banner').classList.remove('show');renderTaskList();renderHeader();syncToCloud(entry);
-}
-
-function savePausedAsEntry(){
-  if(!state.running||!state.running.paused)return;
-  const r=state.running;
-  const hours=(r.accMs||0)/3600000;
+function stopTimerKey(key){
+  const t=state.timers[key];if(!t)return;
+  const ms=t.paused?(t.accMs||0):(t.accMs||0)+(Date.now()-t.startMs);
+  const hours=ms/3600000;
   if(hours>=0.001){
-    const entry={id:Date.now(),taskId:r.taskId,proj:r.proj,item:r.item,type:r.type,desc:r.desc,hours};
+    const entry={id:Date.now(),taskId:key==='_quick'?null:key,proj:t.proj||'',item:t.item||'',type:t.type||'',desc:t.desc||'',hours};
     const today=dateKey();if(!state.entries[today])state.entries[today]=[];
     state.entries[today].push(entry);
     syncToCloud(entry);
   }
-  state.running=null;
-  clearInterval(timerInterval);timerInterval=null;
-  document.getElementById('active-banner').classList.remove('show');
-  document.getElementById('active-banner').classList.remove('paused');
-  renderTaskList();renderHeader();
+  delete state.timers[key];save();
+  renderTimerBanners();renderTaskList();renderHeader();startTick();
 }
 
-function togglePause(){
-  if(!state.running)return;
-  if(state.running.paused){
-    state.running.startMs=Date.now();
-    state.running.paused=false;
-    state.running.pausedAt=null;
-    save();updateBanner();
-    document.getElementById('active-banner').classList.remove('paused');
+let pendingTask=null;
+function openTimerModal(task){
+  const t=state.timers[task.id];
+  const isRunning=t&&!t.paused;
+  const isPaused=t&&t.paused;
+  pendingTask=task;
+  document.getElementById('timer-modal-title').textContent=isRunning?`計時中：${task.label}`:isPaused?`已暫停：${task.label}`:`開始計時：${task.label}`;
+  fillSelect('t-proj',state.projects,task.proj);
+  fillSelect('t-item',state.workItems,task.item);
+  fillSelect('t-type',state.types,task.defaultType||'');
+  document.getElementById('t-desc').value=t?t.desc:'';
+  // Change save button label
+  document.querySelector('#overlay-timer .btn-save').textContent=isRunning?'⏸ 暫停':isPaused?'▶ 繼續':'▶ 開始計時';
+  document.querySelector('#overlay-timer .btn-save').onclick=isRunning?()=>{togglePauseTimer(task.id);closeModal('overlay-timer');}:isPaused?()=>{togglePauseTimer(task.id);closeModal('overlay-timer');}:startTimer;
+  openModal('overlay-timer');
+}
+
+function startTimer(){
+  if(!pendingTask)return;
+  const key=pendingTask.id;
+  const proj=document.getElementById('t-proj').value,item=document.getElementById('t-item').value,type=document.getElementById('t-type').value,desc=document.getElementById('t-desc').value.trim();
+  // If already exists (resuming), keep accMs
+  if(state.timers[key]){
+    state.timers[key].paused=false;state.timers[key].startMs=Date.now();
   } else {
-    state.running.accMs=(state.running.accMs||0)+(Date.now()-state.running.startMs);
-    state.running.paused=true;
-    state.running.pausedAt=Date.now();
-    save();clearInterval(timerInterval);timerInterval=null;
-    document.getElementById('pause-btn').textContent='繼續';
-    document.getElementById('active-banner').classList.add('paused');
+    state.timers[key]={proj,item,type,desc,startMs:Date.now(),accMs:0,paused:false};
   }
+  save();closeModal('overlay-timer');renderTaskList();
 }
 
-function updateBanner(){
-  const banner=document.getElementById('active-banner');
-  if(!state.running){banner.classList.remove('show');banner.classList.remove('paused');return;}
-  banner.classList.add('show');
-  const r=state.running;
-  document.getElementById('banner-name').textContent=r.desc||r.item||r.proj||'計時中';
-  document.getElementById('pause-btn').textContent=r.paused?'繼續':'暫停';
-  if(r.paused){
-    banner.classList.add('paused');
-    const s=Math.floor((r.accMs||0)/1000);const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60;
-    document.getElementById('banner-time').textContent=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')} ⏸`;
-    return;
-  }
-  banner.classList.remove('paused');
-  clearInterval(timerInterval);
-  function tick(){const s=Math.floor(((r.accMs||0)+(Date.now()-r.startMs))/1000);const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60;document.getElementById('banner-time').textContent=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;}
-  tick();timerInterval=setInterval(tick,1000);
+function stopTimer(){
+  // legacy - stop all
+  Object.keys(state.timers).forEach(k=>stopTimerKey(k));
 }
 
-function openManualEntry(){
-  fillSelect('m-proj',state.projects,'');fillSelect('m-item',state.workItems,'');fillSelect('m-type',state.types,'');
-  document.getElementById('m-desc').value='';document.getElementById('m-hours').value='';openModal('overlay-manual');
-}
+function savePausedAsEntry(){} // no-op, kept for compat
 
-function saveManual(){
-  const proj=document.getElementById('m-proj').value,item=document.getElementById('m-item').value,type=document.getElementById('m-type').value,desc=document.getElementById('m-desc').value.trim(),hours=parseFloat(document.getElementById('m-hours').value)||0;
-  if(!proj||!hours){alert('請填入專案和時數');return;}
-  const today=dateKey();if(!state.entries[today])state.entries[today]=[];
-  const newEntry={id:Date.now(),taskId:null,proj,item,type,desc,hours};
-  state.entries[today].push(newEntry);
-  save();closeModal('overlay-manual');renderEntries();renderHeader();syncToCloud(newEntry);
-}
+function togglePause(){} // no-op, kept for compat
 
-function renderEntries(){
-  const list=document.getElementById('entry-list');const entries=todayEntries();list.innerHTML='';
-  if(!entries.length){list.innerHTML='<div class="empty">今天還沒有記錄<br>開始計時或手動補記吧！</div>';return;}
-  entries.slice().reverse().forEach(e=>{
-    const div=document.createElement('div');div.className='entry-row';
-    div.innerHTML=`<div class="entry-dot"></div><div class="entry-info"><div class="entry-proj">${e.proj}${e.item?' · '+e.item:''}</div><div class="entry-detail">${[e.type,e.desc].filter(Boolean).join('｜')}</div></div><div class="entry-time">${fmt(e.hours)}</div><button class="entry-del" onclick="deleteEntry(${e.id})">×</button>`;
-    list.appendChild(div);
-  });
-}
+function updateBanner(){renderTimerBanners();startTick();}
 
-function deleteEntry(id){const today=dateKey();state.entries[today]=(state.entries[today]||[]).filter(e=>e.id!==id);save();renderEntries();renderHeader();}
-
-function renderSummary(){
-  const entries=todayEntries();const box=document.getElementById('summary-box');
-  if(!entries.length){box.innerHTML='<div class="empty" style="padding:24px 0;">今日尚無記錄</div>';return;}
-  const byProj={};entries.forEach(e=>{byProj[e.proj]=(byProj[e.proj]||0)+e.hours;});
-  const sorted=Object.entries(byProj).sort((a,b)=>b[1]-a[1]);const total=entries.reduce((s,e)=>s+e.hours,0);
-  box.innerHTML=sorted.map(([p,h])=>`<div class="summary-row"><span class="summary-proj">${projEmoji(p)} ${p}</span><span class="summary-time">${fmt(h)}</span></div>`).join('')+`<div class="summary-total"><span class="summary-total-label">共 ${entries.length} 筆</span><span class="summary-total-val">${fmt(total)}</span></div>`;
+function deleteQuickTask(id){
+  if(!confirm('確定刪除這個快速項目？'))return;
+  if(state.timers[id])stopTimerKey(id);
+  state.quickTasks=state.quickTasks.filter(t=>t.id!==id);
+  save();renderTaskList();
 }
-
-function exportCSV(){
-  const entries=todayEntries();if(!entries.length){alert('今日尚無記錄');return;}
-  const d=new Date();const dateStr=`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
-  const rows=[['日期','專案','工作項目','任務類型','工作內容','時數']];
-  entries.forEach(e=>{
-    const h=Math.round(e.hours*100)/100;
-    rows.push([dateStr,e.proj||'',e.item||'',e.type||'',e.desc||'',h]);
-  });
-  const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
-  const bom='\uFEFF';
-  const blob=new Blob([bom+csv],{type:'text/csv;charset=utf-8;'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');a.href=url;a.download=`工作日誌_${dateStr.replace(/\//g,'')}.csv`;a.click();
-  URL.revokeObjectURL(url);
-}
-
-function copyReport(){
-  const entries=todayEntries();if(!entries.length){alert('今日尚無記錄');return;}
-  const d=new Date();const lines=[`📅 ${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} 工作日誌`,``];
-  entries.forEach(e=>{const parts=[e.proj,e.item,e.type,e.desc].filter(Boolean);lines.push(`${fmt(e.hours)}｜${parts.join(' › ')}`);});
-  const total=entries.reduce((s,e)=>s+e.hours,0);lines.push(``);lines.push(`⏱ 總計：${fmt(total)}`);
-  navigator.clipboard.writeText(lines.join('\n')).then(()=>{
-    const btn=document.getElementById('copy-btn');btn.textContent='✓ 已複製！';btn.classList.add('success');
-    setTimeout(()=>{btn.textContent='複製日誌文字';btn.classList.remove('success');},2000);
-  });
-}
-
-function clearDay(){
-  if(!confirm('確定清除今日所有記錄？'))return;
-  state.entries[dateKey()]=[];
-  if(state.running){state.running=null;clearInterval(timerInterval);document.getElementById('active-banner').classList.remove('show');}
-  save();renderSummary();renderHeader();renderTaskList();
-}
-
-function renderSettings(){
-  document.getElementById('proj-list').innerHTML=state.projects.map(p=>`<div class="settings-item"><span class="settings-item-name">${projEmoji(p)} ${p}</span><button class="del-tag-btn" onclick="delProj('${p.replace(/'/g,"\\'")}')">×</button></div>`).join('');
-  document.getElementById('item-list').innerHTML=state.workItems.map(t=>`<div class="settings-item"><span class="settings-item-name">${t}</span><button class="del-tag-btn" onclick="delItem('${t.replace(/'/g,"\\'")}')">×</button></div>`).join('');
-  document.getElementById('type-list').innerHTML=state.types.map(t=>`<div class="settings-item"><span class="settings-item-name">${t}</span><button class="del-tag-btn" onclick="delType('${t.replace(/'/g,"\\'")}')">×</button></div>`).join('');
-}
-function addProject(){const v=document.getElementById('new-proj-input').value.trim();if(!v||state.projects.includes(v))return;state.projects.push(v);save();document.getElementById('new-proj-input').value='';renderSettings();}
-function delProj(p){state.projects=state.projects.filter(x=>x!==p);save();renderSettings();}
-function addWorkItem(){const v=document.getElementById('new-item-input').value.trim();if(!v||state.workItems.includes(v))return;state.workItems.push(v);save();document.getElementById('new-item-input').value='';renderSettings();}
-function delItem(t){state.workItems=state.workItems.filter(x=>x!==t);save();renderSettings();}
-function addType(){const v=document.getElementById('new-type-input').value.trim();if(!v||state.types.includes(v))return;state.types.push(v);save();document.getElementById('new-type-input').value='';renderSettings();}
-function delType(t){state.types=state.types.filter(x=>x!==t);save();renderSettings();}
-
-function openAddTask(){fillSelect('at-proj',state.projects,'');fillSelect('at-item',state.workItems,'');fillSelectBlank('at-type',state.types);document.getElementById('at-label').value='';openModal('overlay-addtask');}
-function openQuickStart(){
-  if(state.running&&!state.running.paused){alert('請先暫停目前的計時，再開始新的。');return;}
-  if(state.running&&state.running.paused){savePausedAsEntry();}
-  fillSelectBlank('q-proj',state.projects);fillSelectBlank('q-item',state.workItems);fillSelectBlank('q-type',state.types);
-  document.getElementById('q-desc').value='';
-  openModal('overlay-quick');
-  setTimeout(()=>document.getElementById('q-desc').focus(),100);
-}
-function startQuick(){
-  const proj=document.getElementById('q-proj').value,item=document.getElementById('q-item').value,type=document.getElementById('q-type').value,desc=document.getElementById('q-desc').value.trim();
-  state.running={taskId:null,proj:proj||null,item:item||null,type:type||null,desc,startMs:Date.now(),accMs:0,paused:false,pausedAt:null};
-  save();closeModal('overlay-quick');updateBanner();renderTaskList();
-}
-function saveQuickTask(){const proj=document.getElementById('at-proj').value,item=document.getElementById('at-item').value,type=document.getElementById('at-type').value,label=document.getElementById('at-label').value.trim()||(proj+'｜'+item);state.quickTasks.push({id:'q'+Date.now(),label,proj,item,defaultType:type||''});save();closeModal('overlay-addtask');renderTaskList();}
 
 function fillSelect(id,opts,val){document.getElementById(id).innerHTML=opts.map(o=>`<option value="${o}"${o===val?' selected':''}>${o}</option>`).join('');}
 function fillSelectBlank(id,opts){document.getElementById(id).innerHTML=`<option value="">—</option>`+opts.map(o=>`<option value="${o}">${o}</option>`).join('');}
@@ -601,7 +534,7 @@ async function syncFromCloud(name){
   }catch(e){setSyncStatus('⚠ 無法連線');}
 }
 
-renderHeader();updateBanner();renderTaskList();checkName();
+renderHeader();renderTaskList();checkName();
 </script>
 </body>
 </html>
