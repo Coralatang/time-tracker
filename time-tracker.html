@@ -46,6 +46,11 @@ body{font-family:-apple-system,'SF Pro Text',sans-serif;background:var(--bg);col
 .banner-name{font-size:13px;font-weight:600;color:var(--acc-dk);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .banner-time{font-size:12px;color:var(--t2);margin-top:1px;}
 .stop-btn{padding:7px 14px;background:var(--acc);color:#fff;border:none;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;}
+.pause-btn{padding:7px 14px;background:var(--s1);color:var(--acc-dk);border:1.5px solid var(--acc-l2);border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;margin-right:4px;}
+.banner-paused .dot{animation:none;opacity:.4;}
+.banner-paused .banner-name{color:var(--t2);}
+.banner-paused .banner-time{color:var(--t3);}
+#active-banner.paused{background:var(--s2);border-color:var(--b2);}
 
 .tabs{display:flex;gap:5px;padding:0 16px;margin-bottom:20px;}
 .tab{flex:1;padding:9px;text-align:center;font-size:12px;font-weight:500;border-radius:var(--rs);border:1px solid var(--b1);background:var(--s1);color:var(--t2);cursor:pointer;transition:all .15s;}
@@ -151,6 +156,7 @@ body{font-family:-apple-system,'SF Pro Text',sans-serif;background:var(--bg);col
     <div class="banner-name" id="banner-name">—</div>
     <div class="banner-time" id="banner-time">00:00:00</div>
   </div>
+  <button class="pause-btn" id="pause-btn" onclick="togglePause()">暫停</button>
   <button class="stop-btn" onclick="stopTimer()">停止</button>
 </div>
 
@@ -179,7 +185,8 @@ body{font-family:-apple-system,'SF Pro Text',sans-serif;background:var(--bg);col
 <div class="panel" id="panel-summary">
   <div class="sec-label">今日總覽</div>
   <div class="summary-box" id="summary-box"></div>
-  <button class="copy-btn" id="copy-btn" onclick="copyReport()">複製日誌文字</button>
+  <button class="copy-btn" id="export-btn" onclick="exportCSV()">下載 CSV（可貼入 Excel）</button>
+  <button class="copy-btn" id="copy-btn" onclick="copyReport()" style="background:var(--s1);color:var(--acc);border:1.5px solid var(--acc);">複製日誌文字</button>
   <button class="clear-btn" onclick="clearDay()">清除今日所有記錄</button>
 </div>
 
@@ -335,26 +342,56 @@ function openTimerModal(task){
 function startTimer(){
   if(state.running)return;
   const proj=document.getElementById('t-proj').value,item=document.getElementById('t-item').value,type=document.getElementById('t-type').value,desc=document.getElementById('t-desc').value.trim();
-  state.running={taskId:pendingTask?pendingTask.id:null,proj,item,type,desc,startMs:Date.now()};
+  state.running={taskId:pendingTask?pendingTask.id:null,proj,item,type,desc,startMs:Date.now(),accMs:0,paused:false,pausedAt:null};
   save();closeModal('overlay-timer');updateBanner();renderTaskList();
 }
 
 function stopTimer(){
   if(!state.running)return;
-  const r=state.running;const hours=(Date.now()-r.startMs)/3600000;
+  const r=state.running;
+  const elapsed=r.paused?r.accMs:(r.accMs+(Date.now()-r.startMs));
+  const hours=elapsed/3600000;
+  if(hours<0.001){state.running=null;save();clearInterval(timerInterval);timerInterval=null;document.getElementById('active-banner').classList.remove('show');renderTaskList();return;}
   const entry={id:Date.now(),taskId:r.taskId,proj:r.proj,item:r.item,type:r.type,desc:r.desc,hours};
   const today=dateKey();if(!state.entries[today])state.entries[today]=[];state.entries[today].push(entry);
   state.running=null;save();clearInterval(timerInterval);timerInterval=null;
   document.getElementById('active-banner').classList.remove('show');renderTaskList();renderHeader();
 }
 
+function togglePause(){
+  if(!state.running)return;
+  if(state.running.paused){
+    state.running.startMs=Date.now();
+    state.running.paused=false;
+    state.running.pausedAt=null;
+    save();updateBanner();
+    document.getElementById('active-banner').classList.remove('paused');
+  } else {
+    state.running.accMs=(state.running.accMs||0)+(Date.now()-state.running.startMs);
+    state.running.paused=true;
+    state.running.pausedAt=Date.now();
+    save();clearInterval(timerInterval);timerInterval=null;
+    document.getElementById('pause-btn').textContent='繼續';
+    document.getElementById('active-banner').classList.add('paused');
+  }
+}
+
 function updateBanner(){
   const banner=document.getElementById('active-banner');
-  if(!state.running){banner.classList.remove('show');return;}
+  if(!state.running){banner.classList.remove('show');banner.classList.remove('paused');return;}
   banner.classList.add('show');
-  document.getElementById('banner-name').textContent=state.running.desc||state.running.item||state.running.proj;
+  const r=state.running;
+  document.getElementById('banner-name').textContent=r.desc||r.item||r.proj||'計時中';
+  document.getElementById('pause-btn').textContent=r.paused?'繼續':'暫停';
+  if(r.paused){
+    banner.classList.add('paused');
+    const s=Math.floor((r.accMs||0)/1000);const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60;
+    document.getElementById('banner-time').textContent=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')} ⏸`;
+    return;
+  }
+  banner.classList.remove('paused');
   clearInterval(timerInterval);
-  function tick(){const s=Math.floor((Date.now()-state.running.startMs)/1000);const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60;document.getElementById('banner-time').textContent=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;}
+  function tick(){const s=Math.floor(((r.accMs||0)+(Date.now()-r.startMs))/1000);const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60;document.getElementById('banner-time').textContent=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;}
   tick();timerInterval=setInterval(tick,1000);
 }
 
@@ -389,6 +426,22 @@ function renderSummary(){
   const byProj={};entries.forEach(e=>{byProj[e.proj]=(byProj[e.proj]||0)+e.hours;});
   const sorted=Object.entries(byProj).sort((a,b)=>b[1]-a[1]);const total=entries.reduce((s,e)=>s+e.hours,0);
   box.innerHTML=sorted.map(([p,h])=>`<div class="summary-row"><span class="summary-proj">${projEmoji(p)} ${p}</span><span class="summary-time">${fmt(h)}</span></div>`).join('')+`<div class="summary-total"><span class="summary-total-label">共 ${entries.length} 筆</span><span class="summary-total-val">${fmt(total)}</span></div>`;
+}
+
+function exportCSV(){
+  const entries=todayEntries();if(!entries.length){alert('今日尚無記錄');return;}
+  const d=new Date();const dateStr=`${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
+  const rows=[['日期','專案','工作項目','任務類型','工作內容','時數']];
+  entries.forEach(e=>{
+    const h=Math.round(e.hours*100)/100;
+    rows.push([dateStr,e.proj||'',e.item||'',e.type||'',e.desc||'',h]);
+  });
+  const csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const bom='\uFEFF';
+  const blob=new Blob([bom+csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=`工作日誌_${dateStr.replace(/\//g,'')}.csv`;a.click();
+  URL.revokeObjectURL(url);
 }
 
 function copyReport(){
@@ -431,7 +484,7 @@ function openQuickStart(){
 }
 function startQuick(){
   const proj=document.getElementById('q-proj').value,item=document.getElementById('q-item').value,type=document.getElementById('q-type').value,desc=document.getElementById('q-desc').value.trim();
-  state.running={taskId:null,proj:proj||null,item:item||null,type:type||null,desc,startMs:Date.now()};
+  state.running={taskId:null,proj:proj||null,item:item||null,type:type||null,desc,startMs:Date.now(),accMs:0,paused:false,pausedAt:null};
   save();closeModal('overlay-quick');updateBanner();renderTaskList();
 }
 function saveQuickTask(){const proj=document.getElementById('at-proj').value,item=document.getElementById('at-item').value,label=document.getElementById('at-label').value.trim()||(proj+'｜'+item);state.quickTasks.push({id:'q'+Date.now(),label,proj,item});save();closeModal('overlay-addtask');renderTaskList();}
