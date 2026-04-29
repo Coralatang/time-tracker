@@ -364,7 +364,8 @@ function openTimerModal(task){
 }
 
 function startTimer(){
-  if(state.running)return;
+  if(state.running&&!state.running.paused)return;
+  if(state.running&&state.running.paused){savePausedAsEntry();}
   const proj=document.getElementById('t-proj').value,item=document.getElementById('t-item').value,type=document.getElementById('t-type').value,desc=document.getElementById('t-desc').value.trim();
   state.running={taskId:pendingTask?pendingTask.id:null,proj,item,type,desc,startMs:Date.now(),accMs:0,paused:false,pausedAt:null};
   save();closeModal('overlay-timer');updateBanner();renderTaskList();
@@ -380,6 +381,23 @@ function stopTimer(){
   const today=dateKey();if(!state.entries[today])state.entries[today]=[];state.entries[today].push(entry);
   state.running=null;save();clearInterval(timerInterval);timerInterval=null;
   document.getElementById('active-banner').classList.remove('show');renderTaskList();renderHeader();syncToCloud(entry);
+}
+
+function savePausedAsEntry(){
+  if(!state.running||!state.running.paused)return;
+  const r=state.running;
+  const hours=(r.accMs||0)/3600000;
+  if(hours>=0.001){
+    const entry={id:Date.now(),taskId:r.taskId,proj:r.proj,item:r.item,type:r.type,desc:r.desc,hours};
+    const today=dateKey();if(!state.entries[today])state.entries[today]=[];
+    state.entries[today].push(entry);
+    syncToCloud(entry);
+  }
+  state.running=null;
+  clearInterval(timerInterval);timerInterval=null;
+  document.getElementById('active-banner').classList.remove('show');
+  document.getElementById('active-banner').classList.remove('paused');
+  renderTaskList();renderHeader();
 }
 
 function togglePause(){
@@ -501,7 +519,8 @@ function delType(t){state.types=state.types.filter(x=>x!==t);save();renderSettin
 
 function openAddTask(){fillSelect('at-proj',state.projects,'');fillSelect('at-item',state.workItems,'');fillSelectBlank('at-type',state.types);document.getElementById('at-label').value='';openModal('overlay-addtask');}
 function openQuickStart(){
-  if(state.running){alert('已有計時進行中，請先停止後再開始。');return;}
+  if(state.running&&!state.running.paused){alert('請先暫停目前的計時，再開始新的。');return;}
+  if(state.running&&state.running.paused){savePausedAsEntry();}
   fillSelectBlank('q-proj',state.projects);fillSelectBlank('q-item',state.workItems);fillSelectBlank('q-type',state.types);
   document.getElementById('q-desc').value='';
   openModal('overlay-quick');
