@@ -466,6 +466,29 @@ function deleteQuickTask(id){
   save();renderTaskList();
 }
 
+function openManualEntry(){
+  fillSelect('m-proj',state.projects,'');
+  fillSelect('m-item',state.workItems,'');
+  fillSelect('m-type',state.types,'');
+  document.getElementById('m-desc').value='';
+  document.getElementById('m-hours').value='';
+  openModal('overlay-manual');
+}
+
+function saveManual(){
+  const proj=document.getElementById('m-proj').value;
+  const item=document.getElementById('m-item').value;
+  const type=document.getElementById('m-type').value;
+  const desc=document.getElementById('m-desc').value.trim();
+  const hours=parseFloat(document.getElementById('m-hours').value)||0;
+  if(!proj||!hours){alert('請填入專案和時數');return;}
+  const today=dateKey();
+  if(!state.entries[today])state.entries[today]=[];
+  const newEntry={id:Date.now(),taskId:null,proj,item,type,desc,hours};
+  state.entries[today].push(newEntry);
+  save();closeModal('overlay-manual');renderEntries();renderHeader();syncToCloud(newEntry);
+}
+
 function renderEntries(){
   const list=document.getElementById('entry-list');const entries=todayEntries();list.innerHTML='';
   if(!entries.length){list.innerHTML='<div class="empty">今天還沒有記錄<br>開始計時或手動補記吧！</div>';return;}
