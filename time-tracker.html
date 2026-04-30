@@ -430,18 +430,26 @@ function openTimerModal(task){
   fillSelect('t-type',state.types,task.defaultType||'');
   document.getElementById('t-desc').value=t?t.desc:'';
   // Change save button label
-  document.querySelector('#overlay-timer .btn-save').textContent=isRunning?'⏸ 暫停':isPaused?'▶ 繼續':'▶ 開始計時';
-  document.querySelector('#overlay-timer .btn-save').onclick=isRunning?()=>{togglePauseTimer(task.id);closeModal('overlay-timer');}:isPaused?()=>{togglePauseTimer(task.id);closeModal('overlay-timer');}:startTimer;
+  const btnLabel=isRunning?'⏸ 暫停':isPaused?'▶ 繼續':'▶ 開始計時';
+  document.querySelector('#overlay-timer .btn-save').textContent=btnLabel;
+  document.querySelector('#overlay-timer .btn-save').onclick=startTimer;
   openModal('overlay-timer');
 }
 
 function startTimer(){
   if(!pendingTask)return;
   const key=pendingTask.id;
-  const proj=document.getElementById('t-proj').value,item=document.getElementById('t-item').value,type=document.getElementById('t-type').value,desc=document.getElementById('t-desc').value.trim();
-  // If already exists (resuming), keep accMs
+  const proj=document.getElementById('t-proj').value;
+  const item=document.getElementById('t-item').value;
+  const type=document.getElementById('t-type').value;
+  const desc=document.getElementById('t-desc').value.trim();
   if(state.timers[key]){
-    state.timers[key].paused=false;state.timers[key].startMs=Date.now();
+    state.timers[key].proj=proj;
+    state.timers[key].item=item;
+    state.timers[key].type=type;
+    state.timers[key].desc=desc;
+    state.timers[key].paused=false;
+    state.timers[key].startMs=Date.now();
   } else {
     state.timers[key]={proj,item,type,desc,startMs:Date.now(),accMs:0,paused:false};
   }
